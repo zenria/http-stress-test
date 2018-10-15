@@ -1,10 +1,8 @@
 extern crate clap;
-#[warn(unused_must_use)]
 extern crate reqwest;
 
 use clap::{App, Arg};
 
-use reqwest::Error;
 use reqwest::Result;
 use std::thread;
 use std::time::Duration;
@@ -37,11 +35,7 @@ fn main() {
     let workers = match workers {
         None => 1,
         Some(s) => match s.parse::<i32>() {
-            Ok(n) => if (n > 0) {
-                n
-            } else {
-                panic!("workers need to be a positive int")
-            },
+            Ok(n) => n,
             Err(_) => panic!("workers need to be an int"),
         },
     };
@@ -88,7 +82,10 @@ fn launch_workers(
         let nb_requests = nb_requests.clone();
         let url = url.clone();
         thread::spawn(move || loop {
-            read_url(&url);
+            match read_url(&url) {
+                Err(e) => println!("Error requesting url {}", e),
+                Ok(_) => {}
+            }
             nb_requests.fetch_add(1, Ordering::Relaxed);
             thread::sleep(sleep_duration);
         });
@@ -96,6 +93,6 @@ fn launch_workers(
 }
 
 fn read_url(url: &str) -> Result<()> {
-    let res = reqwest::get(url)?;
+    reqwest::get(url)?;
     Ok(())
 }
