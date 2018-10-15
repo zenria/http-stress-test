@@ -3,8 +3,8 @@ http-stress-test
 
 Dumb concurrent requests of an url. written in rust
 
-HTTP Stress testing 0.1.0
-Do some http requets with hopefully high rates
+    HTTP Stress testing 0.1.0
+    Do some http requets with hopefully high rates
 
     USAGE:
         http-stress-test [OPTIONS] <URL>
