@@ -18,4 +18,6 @@ OPTIONS:
     -w, --workers <workers>    Number of worker threads (default: 1)
 
 ARGS:
-    <URL>    URL to request```
+    <URL>    URL to request
+```
+
