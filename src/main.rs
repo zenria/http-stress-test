@@ -81,8 +81,14 @@ fn launch_workers(
     for _i in 0..workers_count {
         let nb_requests = nb_requests.clone();
         let url = url.clone();
+
+        let client = reqwest::ClientBuilder::new()
+            .timeout(Duration::from_millis(10000))
+            .build()
+            .unwrap();
+
         thread::spawn(move || loop {
-            match read_url(&url) {
+            match read_url(&url, &client) {
                 Err(e) => println!("Error requesting url {}", e),
                 Ok(_) => {}
             }
@@ -92,7 +98,7 @@ fn launch_workers(
     }
 }
 
-fn read_url(url: &str) -> Result<()> {
-    reqwest::get(url)?;
+fn read_url(url: &str, client: &reqwest::Client) -> Result<()> {
+    let _response = client.head(url).send()?;
     Ok(())
 }
