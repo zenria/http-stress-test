@@ -75,13 +75,17 @@ fn main() {
                             if inflight_requests_w.load(Ordering::Relaxed) < max_concurrency {
                                 inflight_requests_w.fetch_add(1, Ordering::Relaxed);
                                 let inflight_requests = inflight_requests_w.clone();
+                                let inflight_requests_err = inflight_requests_w.clone();
                                 let nb_requests_w = nb_requests_w.clone();
                                 tokio::spawn({
-                                    fetch(url.as_ref()).map(move |_| {
-                                        // request done !
-                                        inflight_requests.fetch_sub(1, Ordering::Relaxed);
-                                        nb_requests_w.fetch_add(1, Ordering::Relaxed);
-                                    })
+                                    fetch(url.as_ref())
+                                        .map_err(move |_| {
+                                            inflight_requests_err.fetch_sub(1, Ordering::Relaxed);
+                                        }).map(move |_| {
+                                            // request done !
+                                            inflight_requests.fetch_sub(1, Ordering::Relaxed);
+                                            nb_requests_w.fetch_add(1, Ordering::Relaxed);
+                                        })
                                 });
                             }
                             future::ok(())
