@@ -1,9 +1,10 @@
 http-stress-test
 ================
 
-Dumb concurrent requests of an url. written in rust
+Dumb concurrent requests of an url. written in rust.
+Demonstrates how to do async stuff with tokio & reqwest.
 
-    HTTP Stress testing 0.1.0
+    HTTP Stress testing 0.2.0
     Do some http requets with hopefully high rates
 
     USAGE:
@@ -14,8 +15,8 @@ Dumb concurrent requests of an url. written in rust
         -V, --version    Prints version information
 
     OPTIONS:
-        -d, --delay <delay>        Delay between request in ms (default: 100)
-        -w, --workers <workers>    Number of worker threads (default: 1)
+        -m, --max_concurrency <max_concurrency>    Maximum number of concurrent requests
+        -t, --target_rate <target_rate>            Target requests rate (in req/s)
 
     ARGS:
         <URL>    URL to request
