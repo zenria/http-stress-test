@@ -60,8 +60,8 @@ fn main() {
 
     let nb_requests_w = Arc::new(AtomicUsize::new(0));
     let nb_requests_r = nb_requests_w.clone();
-    let inflight_requests = Arc::new(AtomicUsize::new(0));
-    let inflight_requests_r = inflight_requests.clone();
+    let inflight_requests_w = Arc::new(AtomicUsize::new(0));
+    let inflight_requests_r = inflight_requests_w.clone();
 
     let timing_nano = 1_000_000_000 / target_rate;
 
@@ -72,9 +72,9 @@ fn main() {
                     Interval::new_interval(Duration::from_nanos(timing_nano))
                         .map_err(|e| panic!("timer failed; err={:?}", e))
                         .for_each(move |_| {
-                            if inflight_requests.load(Ordering::Relaxed) < max_concurrency {
-                                inflight_requests.fetch_add(1, Ordering::Relaxed);
-                                let inflight_requests = inflight_requests.clone();
+                            if inflight_requests_w.load(Ordering::Relaxed) < max_concurrency {
+                                inflight_requests_w.fetch_add(1, Ordering::Relaxed);
+                                let inflight_requests = inflight_requests_w.clone();
                                 let nb_requests_w = nb_requests_w.clone();
                                 tokio::spawn({
                                     fetch(url.as_ref()).map(move |_| {
