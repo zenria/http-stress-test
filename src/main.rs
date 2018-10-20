@@ -12,7 +12,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use futures::{Future, Stream};
-use reqwest::async::{Client, ClientBuilder, Decoder};
+use reqwest::async::{ClientBuilder, Decoder};
 use reqwest::RedirectPolicy;
 use std::mem;
 use tokio::timer::Interval;
@@ -22,22 +22,44 @@ use futures::future;
 fn main() {
     let matches = App::new("HTTP Stress testing")
         .version("0.2.0")
-        .author("Philippe GASSMANN <philoops@gmail.com>")
         .about("Do some http requets with hopefully high rates")
         .arg(
             Arg::with_name("max_concurrency")
                 .short("m")
-                .long("max_concurrency")
+                .long("max-concurrency")
                 .takes_value(true)
-                .help("Maximum number of concurrent requests"),
+                .help("Maximum number of concurrent requests (default 1)"),
         ).arg(
             Arg::with_name("target_rate")
                 .short("t")
-                .long("target_rate")
+                .long("target-rate")
                 .takes_value(true)
-                .help("Target requests rate (in req/s)"),
+                .help("Target requests rate (in req/s, default 1)"),
+        ).arg(
+            Arg::with_name("follow_redir")
+                .short("f")
+                .long("follow-redirects")
+                .takes_value(true)
+                .help("Max number of redirections to follow (default 0: do not follow)"),
+        ).arg(
+            Arg::with_name("debug")
+                .short("d")
+                .long("debug")
+                .takes_value(false)
+                .help("Debug mode: print out some response attributes"),
         ).arg(Arg::with_name("URL").help("URL to request").required(true))
         .get_matches();
+
+    let debug = matches.is_present("debug");
+
+    println!("Debug {}", debug);
+
+    let follow_redir = match matches.value_of("follow_redir") {
+        None => 0,
+        Some(n) => n
+            .parse::<usize>()
+            .expect("follow-redirects must be a positive integer"),
+    };
 
     let max_concurrency = matches.value_of("max_concurrency");
     let max_concurrency = match max_concurrency {
@@ -49,7 +71,7 @@ fn main() {
     };
     let target_rate = matches.value_of("target_rate");
     let target_rate = match target_rate {
-        None => 100,
+        None => 1,
         Some(s) => match s.parse::<u64>() {
             Ok(n) => n,
             Err(_) => panic!("target_rate need to be an int"),
@@ -78,7 +100,7 @@ fn main() {
                                 let inflight_requests_err = inflight_requests_w.clone();
                                 let nb_requests_w = nb_requests_w.clone();
                                 tokio::spawn({
-                                    fetch(url.as_ref())
+                                    fetch(url.as_ref(), build_client_builder(follow_redir), debug)
                                         .map_err(move |_| {
                                             inflight_requests_err.fetch_sub(1, Ordering::Relaxed);
                                         }).map(move |_| {
@@ -105,20 +127,37 @@ fn main() {
             })
     });
 }
-fn fetch(url: &String) -> impl Future<Item = (), Error = ()> {
-    build_cliend()
+fn fetch(
+    url: &String,
+    client_builder: ClientBuilder,
+    debug: bool,
+) -> impl Future<Item = (), Error = ()> {
+    client_builder
+        .build()
+        .unwrap()
         .get(url)
         .send()
-        .and_then(|mut res| {
+        .and_then(move |mut res| {
+            if debug {
+                println!("---- Response status {}", res.status());
+                println!("---- Response headers:");
+
+                for (key, value) in res.headers().iter() {
+                    println!("{}: {:?}", key, value);
+                }
+            }
             let body = mem::replace(res.body_mut(), Decoder::empty());
             body.concat2()
         }).map_err(|err| println!("request error: {}", err))
         .map(|_body| {})
 }
 
-fn build_cliend() -> Client {
-    ClientBuilder::new()
-        .redirect(RedirectPolicy::none())
-        .build()
-        .unwrap()
+fn build_client_builder(follow_redir: usize) -> ClientBuilder {
+    ClientBuilder::new().redirect(RedirectPolicy::custom(move |attempt| {
+        if attempt.previous().len() > follow_redir {
+            attempt.stop()
+        } else {
+            attempt.follow()
+        }
+    }))
 }
