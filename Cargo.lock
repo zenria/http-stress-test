@@ -234,7 +234,7 @@ dependencies = [
 
 [[package]]
 name = "http-stress-test"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.25 (registry+https://github.com/rust-lang/crates.io-index)",

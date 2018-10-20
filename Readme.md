@@ -5,7 +5,7 @@ Dumb concurrent requests of an url. written in rust.
 Demonstrates how to do async stuff with tokio & reqwest.
 
 
-    HTTP Stress testing 0.2.0
+    HTTP Stress testing 0.2.1
     Do some http requets with hopefully high rates
 
     USAGE:

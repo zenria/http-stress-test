@@ -28,7 +28,7 @@ struct Config {
 
 fn main() {
     let matches = App::new("HTTP Stress testing")
-        .version("0.2.0")
+        .version("0.2.1")
         .about("Do some http requets with hopefully high rates")
         .arg(
             Arg::with_name("max_concurrency")
@@ -103,47 +103,61 @@ fn lets_do_some_requests(url: String, config: Config) {
     tokio::run({
         future::ok(())
             .and_then(move |_| {
+                // need to spawn here otherwise, the progress_counter intervall won't start
                 tokio::spawn({
                     Interval::new_interval(Duration::from_nanos(timing_nano))
                         .map_err(|e| panic!("timer failed; err={:?}", e))
                         .for_each(move |_| {
-                            if inflight_requests_w.load(Ordering::Relaxed) < config.max_concurrency
-                            {
-                                inflight_requests_w.fetch_add(1, Ordering::Relaxed);
-                                let inflight_requests = inflight_requests_w.clone();
-                                let inflight_requests_err = inflight_requests_w.clone();
-                                let nb_requests_w = nb_requests_w.clone();
-                                tokio::spawn({
-                                    fetch(
-                                        url.as_ref(),
-                                        build_client_builder(config.follow_redir),
-                                        config.debug,
-                                    ).map_err(move |_| {
-                                        inflight_requests_err.fetch_sub(1, Ordering::Relaxed);
-                                    }).map(move |_| {
-                                        // request done !
-                                        inflight_requests.fetch_sub(1, Ordering::Relaxed);
-                                        nb_requests_w.fetch_add(1, Ordering::Relaxed);
-                                    })
-                                });
-                            }
-                            future::ok(())
+                            requestor(&url, &config, &nb_requests_w, &inflight_requests_w)
                         })
                 })
             }).and_then(|_| {
                 Interval::new_interval(Duration::from_secs(1))
                     .map_err(|e| panic!("timer failed; err={:?}", e))
                     .for_each(move |_| {
-                        println!(
-                            "Total requests: {}\tIn-flight requests: {}",
-                            nb_requests_r.load(Ordering::Relaxed),
-                            inflight_requests_r.load(Ordering::Relaxed)
-                        );
-                        future::ok(())
+                        progress_counter(nb_requests_r.as_ref(), inflight_requests_r.as_ref())
                     })
             })
     });
 }
+
+fn progress_counter(
+    nb_requests: &AtomicUsize,
+    inflight_requests: &AtomicUsize,
+) -> impl Future<Item = (), Error = ()> {
+    println!(
+        "Total requests: {}\tIn-flight requests: {}",
+        nb_requests.load(Ordering::Relaxed),
+        inflight_requests.load(Ordering::Relaxed)
+    );
+    future::ok(())
+}
+
+fn requestor(
+    url: &String,
+    config: &Config,
+    nb_requests: &Arc<AtomicUsize>,
+    inflight_requests: &Arc<AtomicUsize>,
+) -> impl Future<Item = (), Error = ()> {
+    if inflight_requests.load(Ordering::Relaxed) < config.max_concurrency {
+        inflight_requests.fetch_add(1, Ordering::Relaxed);
+        let inflight_requests = inflight_requests.clone();
+        let inflight_requests_err = inflight_requests.clone();
+        let nb_requests_w = nb_requests.clone();
+        tokio::spawn({
+            fetch(url, build_client_builder(config.follow_redir), config.debug)
+                .map_err(move |_| {
+                    inflight_requests_err.fetch_sub(1, Ordering::Relaxed);
+                }).map(move |_| {
+                    // request done !
+                    inflight_requests.fetch_sub(1, Ordering::Relaxed);
+                    nb_requests_w.fetch_add(1, Ordering::Relaxed);
+                })
+        });
+    }
+    future::ok(())
+}
+
 fn fetch(
     url: &String,
     client_builder: ClientBuilder,
