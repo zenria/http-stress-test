@@ -76,7 +76,14 @@ fn main() {
     let target_rate = matches.value_of("target_rate");
     let target_rate = match target_rate {
         None => 1,
-        Some(s) => s.parse::<u64>().expect("target_rate need to be an int"),
+        Some(s) => match s.parse::<u64>() {
+            Err(_) => panic!("target rate needs to be an positive integer"),
+            Ok(n) => if n == 0 {
+                panic!("target rate needs to be an positive integer")
+            } else {
+                n
+            },
+        },
     };
     let url = String::from(matches.value_of("URL").unwrap());
 
