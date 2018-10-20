@@ -19,6 +19,13 @@ use tokio::timer::Interval;
 
 use futures::future;
 
+struct Config {
+    max_concurrency: usize,
+    target_rate: u64,
+    follow_redir: usize,
+    debug: bool,
+}
+
 fn main() {
     let matches = App::new("HTTP Stress testing")
         .version("0.2.0")
@@ -52,8 +59,6 @@ fn main() {
 
     let debug = matches.is_present("debug");
 
-    println!("Debug {}", debug);
-
     let follow_redir = match matches.value_of("follow_redir") {
         None => 0,
         Some(n) => n
@@ -64,28 +69,36 @@ fn main() {
     let max_concurrency = matches.value_of("max_concurrency");
     let max_concurrency = match max_concurrency {
         None => 1,
-        Some(s) => match s.parse::<usize>() {
-            Ok(n) => n,
-            Err(_) => panic!("max_concurrency need to be an int"),
-        },
+        Some(s) => s
+            .parse::<usize>()
+            .expect("max_concurrency need to be an int"),
     };
     let target_rate = matches.value_of("target_rate");
     let target_rate = match target_rate {
         None => 1,
-        Some(s) => match s.parse::<u64>() {
-            Ok(n) => n,
-            Err(_) => panic!("target_rate need to be an int"),
-        },
+        Some(s) => s.parse::<u64>().expect("target_rate need to be an int"),
     };
-    let url = Arc::new(String::from(matches.value_of("URL").unwrap()));
+    let url = String::from(matches.value_of("URL").unwrap());
+
+    let config = Config {
+        max_concurrency,
+        target_rate,
+        follow_redir,
+        debug,
+    };
+    lets_do_some_requests(url, config);
+}
+
+fn lets_do_some_requests(url: String, config: Config) {
     println!("Press Ctrl+C to stop this program");
 
+    let url = Arc::new(url);
     let nb_requests_w = Arc::new(AtomicUsize::new(0));
     let nb_requests_r = nb_requests_w.clone();
     let inflight_requests_w = Arc::new(AtomicUsize::new(0));
     let inflight_requests_r = inflight_requests_w.clone();
 
-    let timing_nano = 1_000_000_000 / target_rate;
+    let timing_nano = 1_000_000_000 / config.target_rate;
 
     tokio::run({
         future::ok(())
@@ -94,20 +107,24 @@ fn main() {
                     Interval::new_interval(Duration::from_nanos(timing_nano))
                         .map_err(|e| panic!("timer failed; err={:?}", e))
                         .for_each(move |_| {
-                            if inflight_requests_w.load(Ordering::Relaxed) < max_concurrency {
+                            if inflight_requests_w.load(Ordering::Relaxed) < config.max_concurrency
+                            {
                                 inflight_requests_w.fetch_add(1, Ordering::Relaxed);
                                 let inflight_requests = inflight_requests_w.clone();
                                 let inflight_requests_err = inflight_requests_w.clone();
                                 let nb_requests_w = nb_requests_w.clone();
                                 tokio::spawn({
-                                    fetch(url.as_ref(), build_client_builder(follow_redir), debug)
-                                        .map_err(move |_| {
-                                            inflight_requests_err.fetch_sub(1, Ordering::Relaxed);
-                                        }).map(move |_| {
-                                            // request done !
-                                            inflight_requests.fetch_sub(1, Ordering::Relaxed);
-                                            nb_requests_w.fetch_add(1, Ordering::Relaxed);
-                                        })
+                                    fetch(
+                                        url.as_ref(),
+                                        build_client_builder(config.follow_redir),
+                                        config.debug,
+                                    ).map_err(move |_| {
+                                        inflight_requests_err.fetch_sub(1, Ordering::Relaxed);
+                                    }).map(move |_| {
+                                        // request done !
+                                        inflight_requests.fetch_sub(1, Ordering::Relaxed);
+                                        nb_requests_w.fetch_add(1, Ordering::Relaxed);
+                                    })
                                 });
                             }
                             future::ok(())
