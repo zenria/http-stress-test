@@ -7,7 +7,6 @@ use clap::{App, Arg};
 
 use std::time::Duration;
 
-use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -18,6 +17,9 @@ use std::mem;
 use tokio::timer::Interval;
 
 use futures::future;
+
+mod concurrent;
+use concurrent::ConcurrentAtomicUsize;
 
 struct Config {
     max_concurrency: usize,
@@ -100,10 +102,8 @@ fn lets_do_some_requests(url: String, config: Config) {
     println!("Press Ctrl+C to stop this program");
 
     let url = Arc::new(url);
-    let nb_requests_w = Arc::new(AtomicUsize::new(0));
-    let nb_requests_r = nb_requests_w.clone();
-    let inflight_requests_w = Arc::new(AtomicUsize::new(0));
-    let inflight_requests_r = inflight_requests_w.clone();
+    let (nb_requests_r, nb_requests_w) = ConcurrentAtomicUsize::new2(0);
+    let (inflight_requests_r, inflight_requests_w) = ConcurrentAtomicUsize::new2(0);
 
     let timing_nano = 1_000_000_000 / config.target_rate;
 
@@ -121,16 +121,14 @@ fn lets_do_some_requests(url: String, config: Config) {
             }).and_then(|_| {
                 Interval::new_interval(Duration::from_secs(1))
                     .map_err(|e| panic!("timer failed; err={:?}", e))
-                    .for_each(move |_| {
-                        progress_counter(nb_requests_r.as_ref(), inflight_requests_r.as_ref())
-                    })
+                    .for_each(move |_| progress_counter(&nb_requests_r, &inflight_requests_r))
             })
     });
 }
 
 fn progress_counter(
-    nb_requests: &AtomicUsize,
-    inflight_requests: &AtomicUsize,
+    nb_requests: &ConcurrentAtomicUsize,
+    inflight_requests: &ConcurrentAtomicUsize,
 ) -> impl Future<Item = (), Error = ()> {
     println!(
         "Total requests: {}\tIn-flight requests: {}",
@@ -143,13 +141,12 @@ fn progress_counter(
 fn requestor(
     url: &String,
     config: &Config,
-    nb_requests: &Arc<AtomicUsize>,
-    inflight_requests: &Arc<AtomicUsize>,
+    nb_requests: &ConcurrentAtomicUsize,
+    inflight_requests: &ConcurrentAtomicUsize,
 ) -> impl Future<Item = (), Error = ()> {
     if inflight_requests.load(Ordering::Relaxed) < config.max_concurrency {
         inflight_requests.fetch_add(1, Ordering::Relaxed);
-        let inflight_requests = inflight_requests.clone();
-        let inflight_requests_err = inflight_requests.clone();
+        let (inflight_requests, inflight_requests_err) = inflight_requests.clone2();
         let nb_requests_w = nb_requests.clone();
         tokio::spawn({
             fetch(url, build_client_builder(config.follow_redir), config.debug)
