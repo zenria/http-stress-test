@@ -14,17 +14,17 @@ pub struct ConcurrentAtomicUsize {
 }
 
 impl ConcurrentAtomicUsize {
-    pub fn new(i: usize) -> ConcurrentAtomicUsize {
+    pub fn new(i: usize) -> Self {
         ConcurrentAtomicUsize {
             c: Arc::new(AtomicUsize::new(i))
         }
     }
 
-    pub fn new2(i: usize) -> (ConcurrentAtomicUsize, ConcurrentAtomicUsize) {
+    pub fn new2(i: usize) -> (Self, Self) {
         let r = Self::new(i);
         (r.clone(), r)
     }
-    
+
     pub fn clone2(&self) -> (Self, Self) {
         (self.clone(), self.clone())
     }
